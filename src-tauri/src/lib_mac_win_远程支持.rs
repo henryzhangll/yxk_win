@@ -24,19 +24,19 @@ pub fn run() {
             };
             
             let method = request.method().to_string();
+            println!("🔄 代理请求: {} {} -> {}", method, path, target_url);
+            
             let body_bytes = request.body().clone();
+            
+            if !body_bytes.is_empty() {
+                if let Ok(body_str) = String::from_utf8(body_bytes.clone()) {
+                    println!("📦 请求体: {}", body_str);
+                }
+            }
             
             // Mac: 使用 reqwest
             #[cfg(target_os = "macos")]
             {
-                println!("🔄 [Mac] 代理: {} {}", method, target_url);
-                
-                if !body_bytes.is_empty() {
-                    if let Ok(body_str) = String::from_utf8(body_bytes.clone()) {
-                        println!("📦 [Mac] 请求体: {}", body_str);
-                    }
-                }
-                
                 let client = reqwest::blocking::Client::builder()
                     .build()
                     .unwrap();
@@ -64,7 +64,7 @@ pub fn run() {
                     Ok(response) => {
                         let status = response.status().as_u16();
                         let body = response.text().unwrap_or_default();
-                        println!("✅ [Mac] 代理成功: 状态码 {}", status);
+                        println!("✅ 代理成功: 状态码 {}", status);
                         
                         return tauri::http::Response::builder()
                             .status(status)
@@ -74,7 +74,7 @@ pub fn run() {
                             .unwrap();
                     }
                     Err(e) => {
-                        println!("❌ [Mac] 代理失败: {}", e);
+                        println!("❌ 代理失败: {}", e);
                         return tauri::http::Response::builder()
                             .status(500)
                             .body(e.to_string().into_bytes())
@@ -83,56 +83,29 @@ pub fn run() {
                 }
             }
             
-            // Windows: 使用 PowerShell（修复后的版本）
+            // Windows: 使用 curl
             #[cfg(target_os = "windows")]
             {
                 use std::process::Command;
                 
-                println!("🔄 [Windows] 代理: {} {}", method, target_url);
+                let mut cmd = Command::new("curl");
+                cmd.arg("-X").arg(&method);
+                cmd.arg("-s");
+                cmd.arg("-H").arg("Content-Type: application/json");
                 
                 if !body_bytes.is_empty() {
-                    if let Ok(body_str) = String::from_utf8(body_bytes.clone()) {
-                        println!("📦 [Windows] 请求体: {}", body_str);
+                    if let Ok(body_str) = String::from_utf8(body_bytes) {
+                        cmd.arg("-d").arg(&body_str);
                     }
                 }
                 
-                // 构建 PowerShell 命令
-                let ps_command = if body_bytes.is_empty() {
-                    // GET 请求
-                    format!(
-                        r#"$url = '{}'; $method = '{}'; try {{ $response = Invoke-WebRequest -Uri $url -Method $method -UseBasicParsing -Headers @{{'Content-Type'='application/json'}}; Write-Output $response.Content }} catch {{ Write-Error $_.Exception.Message; exit 1 }}"#,
-                        target_url, method
-                    )
-                } else {
-                    // POST/PUT 请求（带 body）
-                    let body_str = String::from_utf8(body_bytes).unwrap_or_default();
-                    format!(
-                        r#"$url = '{}'; $method = '{}'; $body = '{}'; try {{ $response = Invoke-WebRequest -Uri $url -Method $method -Body $body -ContentType 'application/json' -UseBasicParsing; Write-Output $response.Content }} catch {{ Write-Error $_.Exception.Message; exit 1 }}"#,
-                        target_url, method, body_str
-                    )
-                };
+                cmd.arg(&target_url);
                 
-                println!("🔧 [Windows] 执行 PowerShell...");
-                
-                let output = Command::new("powershell")
-                    .arg("-NoProfile")
-                    .arg("-Command")
-                    .arg(&ps_command)
-                    .output();
-                
-                match output {
+                match cmd.output() {
                     Ok(output) => {
-                        println!("📊 [Windows] 退出码: {:?}", output.status.code());
-                        
-                        if !output.stderr.is_empty() {
-                            let stderr = String::from_utf8_lossy(&output.stderr);
-                            println!("⚠️ [Windows] stderr: {}", stderr);
-                        }
-                        
                         if output.status.success() {
                             let body = String::from_utf8_lossy(&output.stdout).to_string();
-                            println!("✅ [Windows] 代理成功, 响应长度: {}", body.len());
-                            
+                            println!("✅ 代理成功");
                             return tauri::http::Response::builder()
                                 .status(200)
                                 .header("Content-Type", "application/json")
@@ -140,8 +113,8 @@ pub fn run() {
                                 .body(body.into_bytes())
                                 .unwrap();
                         } else {
-                            let err = String::from_utf8_lossy(&output.stderr).to_string();
-                            println!("❌ [Windows] 代理失败: {}", err);
+                            let err = format!("curl failed: {:?}", output.status);
+                            println!("❌ {}", err);
                             return tauri::http::Response::builder()
                                 .status(500)
                                 .body(err.into_bytes())
@@ -149,7 +122,7 @@ pub fn run() {
                         }
                     }
                     Err(e) => {
-                        println!("❌ [Windows] 执行失败: {}", e);
+                        println!("❌ 代理失败: {}", e);
                         return tauri::http::Response::builder()
                             .status(500)
                             .body(e.to_string().into_bytes())
@@ -180,6 +153,7 @@ pub fn run() {
                     Ok(output) => {
                         if output.status.success() {
                             let body = String::from_utf8_lossy(&output.stdout).to_string();
+                            println!("✅ 代理成功");
                             return tauri::http::Response::builder()
                                 .status(200)
                                 .header("Content-Type", "application/json")
@@ -187,7 +161,8 @@ pub fn run() {
                                 .body(body.into_bytes())
                                 .unwrap();
                         } else {
-                            let err = String::from_utf8_lossy(&output.stderr);
+                            let err = format!("curl failed: {:?}", output.status);
+                            println!("❌ {}", err);
                             return tauri::http::Response::builder()
                                 .status(500)
                                 .body(err.into_bytes())
@@ -195,6 +170,7 @@ pub fn run() {
                         }
                     }
                     Err(e) => {
+                        println!("❌ 代理失败: {}", e);
                         return tauri::http::Response::builder()
                             .status(500)
                             .body(e.to_string().into_bytes())
@@ -202,6 +178,12 @@ pub fn run() {
                     }
                 }
             }
+            
+            // 默认返回（不会执行到这里）
+            return tauri::http::Response::builder()
+                .status(500)
+                .body(b"Unsupported platform".to_vec())
+                .unwrap();
         })
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
