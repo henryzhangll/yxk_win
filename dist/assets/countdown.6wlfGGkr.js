@@ -1,0 +1,1 @@
+function t(t){return t=t<10?"0"+t:""+t}const o={countdown:function(o){var n=(o.data.end_at||0)-(o.data.now_at||0);console.log("that",o),function a(){var e=Math.floor(n/1e3),r=Math.floor(e/3600%24),c=Math.floor(e/60%60),l=Math.floor(e%60);let u=null;if(r=t(r),c=t(c),l=t(l),n<0)return!1;u={hr:r,min:c,sec:l},o.setData({countDownTxt:u}),n-=1e3,setTimeout(a,1e3)}()}};export{o as c};

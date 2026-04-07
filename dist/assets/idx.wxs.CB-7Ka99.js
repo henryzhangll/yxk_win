@@ -1,0 +1,1 @@
+const t={idxOf:function(t,e){return-1!=t.indexOf(e)},divTwo:function(t,e){var i=parseFloat(t),n=parseFloat(e);return isNaN(i)||isNaN(n)||0===n?"0.00":(i/n*100).toFixed(2)},fixedValue:function(t){return t.toFixed(2)}};export{t as I};
