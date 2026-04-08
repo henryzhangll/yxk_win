@@ -34,6 +34,7 @@ pub fn run() {
                 }
             }
             
+            // 统一使用 reqwest
             let client = reqwest::blocking::Client::builder()
                 .build()
                 .unwrap();
@@ -43,6 +44,7 @@ pub fn run() {
                 &target_url
             );
             
+            // 复制请求头
             for (key, value) in request.headers() {
                 if let Ok(header_value) = reqwest::header::HeaderValue::from_str(&value.to_str().unwrap_or("")) {
                     if let Ok(header_name) = reqwest::header::HeaderName::from_bytes(key.as_str().as_bytes()) {
@@ -51,6 +53,7 @@ pub fn run() {
                 }
             }
             
+            // 添加请求体
             let request_builder = if !body_bytes.is_empty() {
                 request_builder.body(body_bytes)
             } else {
@@ -83,74 +86,47 @@ pub fn run() {
             let window = app.get_webview_window("main").unwrap();
             window.show().unwrap();
             
-            // Tauri v2 中打开开发者工具的方法
-            #[cfg(debug_assertions)]
-            {
-                window.eval("window.__TAURI_INTERNALS__.invoke('plugin:devtools|open')").ok();
-            }
-            
-            // 注入劫持脚本
+            // 注入劫持脚本（放在 index.html 中更稳定，但这里也保留）
             let script = r#"
                 (function() {
-                    console.log('🚀 启动代理');
+                    if (window.__proxy_installed__) {
+                        return;
+                    }
+                    window.__proxy_installed__ = true;
+                    
+                    console.log('🚀 启动代理劫持');
                     
                     const OriginalXHR = window.XMLHttpRequest;
                     
-                    function ProxyXHR() {
+                    window.XMLHttpRequest = function() {
                         const xhr = new OriginalXHR();
-                        let _method, _url;
-                        let _headers = {};
-                        
                         const originalOpen = xhr.open;
-                        const originalSend = xhr.send;
-                        const originalSetRequestHeader = xhr.setRequestHeader;
                         
-                        xhr.setRequestHeader = function(header, value) {
-                            _headers[header] = value;
-                            return originalSetRequestHeader.call(this, header, value);
-                        };
-                        
-                        xhr.open = function(method, url, async = true, user, password) {
-                            _method = method;
-                            _url = url;
-                            
+                        xhr.open = function(method, url, async, user, password) {
                             if (url && (url.includes('/api') || url.includes('/wxcx'))) {
-                                xhr._useProxy = true;
                                 const proxyUrl = 'proxy://localhost' + url;
-                                console.log('🔄 代理:', method, url);
+                                console.log('🔄 劫持:', url, '->', proxyUrl);
                                 return originalOpen.call(this, method, proxyUrl, async, user, password);
                             }
-                            
                             return originalOpen.call(this, method, url, async, user, password);
                         };
                         
-                        xhr.send = function(body) {
-                            if (xhr._useProxy) {
-                                for (const [key, value] of Object.entries(_headers)) {
-                                    originalSetRequestHeader.call(this, key, value);
-                                }
-                                console.log('📦 请求体:', body);
-                            }
-                            return originalSend.call(this, body);
-                        };
-                        
                         return xhr;
-                    }
+                    };
                     
-                    window.XMLHttpRequest = ProxyXHR;
                     window.XMLHttpRequest.prototype = OriginalXHR.prototype;
                     
                     const originalFetch = window.fetch;
-                    window.fetch = function(url, options = {}) {
+                    window.fetch = function(url, options) {
                         if (typeof url === 'string' && (url.includes('/api') || url.includes('/wxcx'))) {
                             const proxyUrl = 'proxy://localhost' + url;
-                            console.log('🔄 fetch 代理:', url);
+                            console.log('🔄 Fetch 劫持:', url, '->', proxyUrl);
                             return originalFetch(proxyUrl, options);
                         }
                         return originalFetch(url, options);
                     };
                     
-                    console.log('✅ 代理已启用');
+                    console.log('✅ 代理劫持已启用');
                 })();
             "#;
             

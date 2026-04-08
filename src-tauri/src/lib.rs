@@ -24,19 +24,19 @@ pub fn run() {
             };
             
             let method = request.method().to_string();
+            println!("🔄 代理请求: {} {} -> {}", method, path, target_url);
+            
             let body_bytes = request.body().clone();
+            
+            if !body_bytes.is_empty() {
+                if let Ok(body_str) = String::from_utf8(body_bytes.clone()) {
+                    println!("📦 请求体: {}", body_str);
+                }
+            }
             
             // Mac: 使用 reqwest
             #[cfg(target_os = "macos")]
             {
-                println!("🔄 [Mac] 代理: {} {}", method, target_url);
-                
-                if !body_bytes.is_empty() {
-                    if let Ok(body_str) = String::from_utf8(body_bytes.clone()) {
-                        println!("📦 [Mac] 请求体: {}", body_str);
-                    }
-                }
-                
                 let client = reqwest::blocking::Client::builder()
                     .build()
                     .unwrap();
@@ -64,7 +64,7 @@ pub fn run() {
                     Ok(response) => {
                         let status = response.status().as_u16();
                         let body = response.text().unwrap_or_default();
-                        println!("✅ [Mac] 代理成功: 状态码 {}", status);
+                        println!("✅ 代理成功: 状态码 {}", status);
                         
                         return tauri::http::Response::builder()
                             .status(status)
@@ -74,7 +74,7 @@ pub fn run() {
                             .unwrap();
                     }
                     Err(e) => {
-                        println!("❌ [Mac] 代理失败: {}", e);
+                        println!("❌ 代理失败: {}", e);
                         return tauri::http::Response::builder()
                             .status(500)
                             .body(e.to_string().into_bytes())
@@ -83,83 +83,8 @@ pub fn run() {
                 }
             }
             
-            // Windows: 使用 PowerShell（修复后的版本）
+            // Windows: 使用 curl
             #[cfg(target_os = "windows")]
-            {
-                use std::process::Command;
-                
-                println!("🔄 [Windows] 代理: {} {}", method, target_url);
-                
-                if !body_bytes.is_empty() {
-                    if let Ok(body_str) = String::from_utf8(body_bytes.clone()) {
-                        println!("📦 [Windows] 请求体: {}", body_str);
-                    }
-                }
-                
-                // 构建 PowerShell 命令
-                let ps_command = if body_bytes.is_empty() {
-                    // GET 请求
-                    format!(
-                        r#"$url = '{}'; $method = '{}'; try {{ $response = Invoke-WebRequest -Uri $url -Method $method -UseBasicParsing -Headers @{{'Content-Type'='application/json'}}; Write-Output $response.Content }} catch {{ Write-Error $_.Exception.Message; exit 1 }}"#,
-                        target_url, method
-                    )
-                } else {
-                    // POST/PUT 请求（带 body）
-                    let body_str = String::from_utf8(body_bytes).unwrap_or_default();
-                    format!(
-                        r#"$url = '{}'; $method = '{}'; $body = '{}'; try {{ $response = Invoke-WebRequest -Uri $url -Method $method -Body $body -ContentType 'application/json' -UseBasicParsing; Write-Output $response.Content }} catch {{ Write-Error $_.Exception.Message; exit 1 }}"#,
-                        target_url, method, body_str
-                    )
-                };
-                
-                println!("🔧 [Windows] 执行 PowerShell...");
-                
-                let output = Command::new("powershell")
-                    .arg("-NoProfile")
-                    .arg("-Command")
-                    .arg(&ps_command)
-                    .output();
-                
-                match output {
-                    Ok(output) => {
-                        println!("📊 [Windows] 退出码: {:?}", output.status.code());
-                        
-                        if !output.stderr.is_empty() {
-                            let stderr = String::from_utf8_lossy(&output.stderr);
-                            println!("⚠️ [Windows] stderr: {}", stderr);
-                        }
-                        
-                        if output.status.success() {
-                            let body = String::from_utf8_lossy(&output.stdout).to_string();
-                            println!("✅ [Windows] 代理成功, 响应长度: {}", body.len());
-                            
-                            return tauri::http::Response::builder()
-                                .status(200)
-                                .header("Content-Type", "application/json")
-                                .header("Access-Control-Allow-Origin", "*")
-                                .body(body.into_bytes())
-                                .unwrap();
-                        } else {
-                            let err = String::from_utf8_lossy(&output.stderr).to_string();
-                            println!("❌ [Windows] 代理失败: {}", err);
-                            return tauri::http::Response::builder()
-                                .status(500)
-                                .body(err.into_bytes())
-                                .unwrap();
-                        }
-                    }
-                    Err(e) => {
-                        println!("❌ [Windows] 执行失败: {}", e);
-                        return tauri::http::Response::builder()
-                            .status(500)
-                            .body(e.to_string().into_bytes())
-                            .unwrap();
-                    }
-                }
-            }
-            
-            // Linux: 使用 curl
-            #[cfg(target_os = "linux")]
             {
                 use std::process::Command;
                 
@@ -180,6 +105,7 @@ pub fn run() {
                     Ok(output) => {
                         if output.status.success() {
                             let body = String::from_utf8_lossy(&output.stdout).to_string();
+                            println!("✅ Windows 代理成功");
                             return tauri::http::Response::builder()
                                 .status(200)
                                 .header("Content-Type", "application/json")
@@ -187,7 +113,8 @@ pub fn run() {
                                 .body(body.into_bytes())
                                 .unwrap();
                         } else {
-                            let err = String::from_utf8_lossy(&output.stderr);
+                            let err = format!("curl failed: {:?}", output.status);
+                            println!("❌ {}", err);
                             return tauri::http::Response::builder()
                                 .status(500)
                                 .body(err.into_bytes())
@@ -195,6 +122,7 @@ pub fn run() {
                         }
                     }
                     Err(e) => {
+                        println!("❌ 代理失败: {}", e);
                         return tauri::http::Response::builder()
                             .status(500)
                             .body(e.to_string().into_bytes())
@@ -202,82 +130,16 @@ pub fn run() {
                     }
                 }
             }
+            
+            // 默认返回
+            tauri::http::Response::builder()
+                .status(500)
+                .body(b"Unsupported platform".to_vec())
+                .unwrap()
         })
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
             window.show().unwrap();
-            
-            #[cfg(debug_assertions)]
-            {
-                let _ = window.eval("window.__TAURI_INTERNALS__.invoke('plugin:devtools|open')");
-            }
-            
-            let script = r#"
-                (function() {
-                    console.log('🚀 启动代理');
-                    
-                    const OriginalXHR = window.XMLHttpRequest;
-                    
-                    function ProxyXHR() {
-                        const xhr = new OriginalXHR();
-                        let _method, _url;
-                        let _headers = {};
-                        
-                        const originalOpen = xhr.open;
-                        const originalSend = xhr.send;
-                        const originalSetRequestHeader = xhr.setRequestHeader;
-                        
-                        xhr.setRequestHeader = function(header, value) {
-                            _headers[header] = value;
-                            return originalSetRequestHeader.call(this, header, value);
-                        };
-                        
-                        xhr.open = function(method, url, async = true, user, password) {
-                            _method = method;
-                            _url = url;
-                            
-                            if (url && (url.includes('/api') || url.includes('/wxcx'))) {
-                                xhr._useProxy = true;
-                                const proxyUrl = 'proxy://localhost' + url;
-                                console.log('🔄 代理:', method, url);
-                                return originalOpen.call(this, method, proxyUrl, async, user, password);
-                            }
-                            
-                            return originalOpen.call(this, method, url, async, user, password);
-                        };
-                        
-                        xhr.send = function(body) {
-                            if (xhr._useProxy) {
-                                for (const [key, value] of Object.entries(_headers)) {
-                                    originalSetRequestHeader.call(this, key, value);
-                                }
-                                console.log('📦 请求体:', body);
-                            }
-                            return originalSend.call(this, body);
-                        };
-                        
-                        return xhr;
-                    }
-                    
-                    window.XMLHttpRequest = ProxyXHR;
-                    window.XMLHttpRequest.prototype = OriginalXHR.prototype;
-                    
-                    const originalFetch = window.fetch;
-                    window.fetch = function(url, options = {}) {
-                        if (typeof url === 'string' && (url.includes('/api') || url.includes('/wxcx'))) {
-                            const proxyUrl = 'proxy://localhost' + url;
-                            console.log('🔄 fetch 代理:', url);
-                            return originalFetch(proxyUrl, options);
-                        }
-                        return originalFetch(url, options);
-                    };
-                    
-                    console.log('✅ 代理已启用');
-                })();
-            "#;
-            
-            let _ = window.eval(script);
-            
             Ok(())
         })
         .run(tauri::generate_context!())

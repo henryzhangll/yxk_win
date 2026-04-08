@@ -14,9 +14,6 @@
         "height": 1060,
 		"minWidth": 630,
 		"minHeight": 1060,
-		"resizable":false,
-		"maximizable": false,
-		"minimizable": false,
 		"center": true
       }
     ],

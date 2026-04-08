@@ -9,9 +9,73 @@
       content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no"
     />
     <title>易小考</title>
-    <script type="module" crossorigin src="/assets/index-DKSNdkjH.js"></script>
+    <script type="module" crossorigin src="/assets/index-GH2Z_ek7.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-D9hIoU-z.css">
+	
+	<!-- 代理劫持脚本 - 必须放在最前面 -->
+	<script>
+	        (function() {
+	            console.log('🚀 启动代理劫持');
+	            
+	            // 防止重复注入
+	            if (window.__proxy_installed__) {
+	                console.log('代理已安装，跳过');
+	                return;
+	            }
+	            window.__proxy_installed__ = true;
+	            
+	            // 劫持 XMLHttpRequest
+	            const OriginalXHR = window.XMLHttpRequest;
+	            
+	            window.XMLHttpRequest = function() {
+	                const xhr = new OriginalXHR();
+	                const originalOpen = xhr.open;
+	                const originalSend = xhr.send;
+	                let _method, _url;
+	                
+	                xhr.open = function(method, url, async, user, password) {
+	                    _method = method;
+	                    _url = url;
+	                    
+	                    if (url && (url.includes('/api') || url.includes('/wxcx'))) {
+	                        const proxyUrl = 'proxy://localhost' + url;
+	                        console.log('🔄 XHR 劫持:', url, '->', proxyUrl);
+	                        return originalOpen.call(this, method, proxyUrl, async, user, password);
+	                    }
+	                    return originalOpen.call(this, method, url, async, user, password);
+	                };
+	                
+	                xhr.send = function(body) {
+	                    if (_url && (_url.includes('/api') || _url.includes('/wxcx'))) {
+	                        console.log('📦 XHR 请求体:', body);
+	                    }
+	                    return originalSend.call(this, body);
+	                };
+	                
+	                return xhr;
+	            };
+	            
+	            window.XMLHttpRequest.prototype = OriginalXHR.prototype;
+	            
+	            // 劫持 fetch
+	            const originalFetch = window.fetch;
+	            window.fetch = function(url, options) {
+	                if (typeof url === 'string' && (url.includes('/api') || url.includes('/wxcx'))) {
+	                    const proxyUrl = 'proxy://localhost' + url;
+	                    console.log('🔄 Fetch 劫持:', url, '->', proxyUrl);
+	                    return originalFetch(proxyUrl, options);
+	                }
+	                return originalFetch(url, options);
+	            };
+	            
+	            console.log('✅ 代理劫持已启用');
+	        })();
+	    </script>
+		
+		
   </head>
+  
+  
   <body>
     <div id="app"></div>
   </body>

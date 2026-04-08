@@ -23,7 +23,6 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# 只在 Mac 下需要 reqwest
 [target.'cfg(target_os = "macos")'.dependencies]
 reqwest = { version = "0.11", features = ["blocking", "json"] }
 
